@@ -231,10 +231,21 @@ else
 
     If ($SaveFile) 
     {
-      Try  { $objPresentation.Save() }
-      Catch { Write-Host "An error occurred on Save."; Write-Host "Read-only media?"; Write-Host "Did you close PowerPoint - or did it crash?"; Write-Host "Please Retry!"; Break }
+      Try
+      {
+         $objPresentation.Save() 
+         $objPresentation.Close()
+         $objPPT.Quit()
+      }
+      Catch 
+      {
+         Write-Host "An error occurred on Save."
+         Write-Host "- Read-only media?"
+         Write-Host "- Did you close PowerPoint?"
+         Write-Host "- Did PowerPoint crash?"
+         Write-Host "Please Retry!"
+      }
     
     }
-    $objPresentation.Close()
-    $objPPT.Quit()
+    
 } 
