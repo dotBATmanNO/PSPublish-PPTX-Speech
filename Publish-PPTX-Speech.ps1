@@ -212,7 +212,14 @@ else
             Start-Sleep -Seconds $intSlideDuration
         }
         
-        If ($SaveFile) { $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceTime = $intSlideDuration }
+        # Added errorhandling to first object access - in testing some instances have crashed.
+        # Add auto-restart to your own error handling.
+
+        If ($SaveFile) 
+        {
+          Try   { $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceTime = $intSlideDuration }
+          Catch { Write-Host "An error occurred, did you close PowerPoint - or did it crash?"; Write-Host "Please Retry!"; Break }
+        }
          
         If ($CurSlide -lt $objPresentation.Slides.Count)
         { 
@@ -222,7 +229,12 @@ else
         
     } # Reached the end of slide-show
 
-    If ($SaveFile) { $objPresentation.Save() }
+    If ($SaveFile) 
+    {
+      Try  { $objPresentation.Save() }
+      Catch { Write-Host "An error occurred on Save."; Write-Host "Read-only media?"; Write-Host "Did you close PowerPoint - or did it crash?"; Write-Host "Please Retry!"; Break }
+    
+    }
     $objPresentation.Close()
     $objPPT.Quit()
 } 
