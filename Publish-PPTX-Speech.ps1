@@ -321,7 +321,6 @@ else
              # Set slide to proceed to next slide automatically after timing established on playback.
              # Round and add 1 to be sure..
              $intSlideDuration = [math]::Round($intSlideDuration+1)
-             write-host $intSlideDuration
              $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceTime = $intSlideDuration
           }
           Catch { Write-Host "An error occurred, did you close PowerPoint - or did it crash?"; Write-Host "Please Retry!"; Break }
@@ -359,7 +358,6 @@ else
          {
            Write-Host "Saving PPTX file with voice-over as '$($PPTXVoiceOverFile)'."
            $objPresentation.SaveCopyAs($PPTXVoiceOverFile, $pptFixedFormat)
-           Start-Sleep -Seconds 3
            Write-Host "Save completed."
          }
 
@@ -380,10 +378,11 @@ else
          }
          
          $objPresentation.Close()
-         #Start-Sleep -Seconds 2
-         $objPPT.displayalerts = [Microsoft.Office.Interop.PowerPoint.PpAlertLevel]::ppAlertsNone
+         Start-Sleep -Seconds 1 # Troubleshoot Corrupted file
          $objPPT.Quit()
+         Start-Sleep -Seconds 1 # Troubleshoot Corrupted file
          $objPPT = $null
+         Start-Sleep -Seconds 1 # Troubleshoot Corrupted file
          [gc]::collect()
          [gc]::WaitForPendingFinalizers()
       }
