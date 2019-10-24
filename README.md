@@ -1,9 +1,9 @@
 # PSPublish-PPTX-Speech
 Publish your PowerPoint to video using Text-To-Speech and Subtitle generation.
 
-Target Users: 
+Target Users are: 
 - Conferences
-- Content Publishers. 
+- Content Publishers.
 
 Top use case:
 - Low-cost narrated video
