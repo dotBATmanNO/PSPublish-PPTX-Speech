@@ -1,14 +1,45 @@
 <#
-    .SYNOPSIS
-    This script automates the running of a slide show, 
-    including text-to-speech and (pending) generation of .SRT subtitle files.
+  .SYNOPSIS
+  This script automates the running of a slide show, 
+  including text-to-speech and (pending) generation of .SRT subtitle files.
         
-    .DESCRIPTION
-	Update the Publish-PPTX.Speech.XLSX worksheet to generate .CSV file.
-    Alternatively update the .CSV file directly if you do not have Excel available.
+  .DESCRIPTION
+  Update the Publish-PPTX-Speech.XLSX worksheet to generate .CSV file.
+  Alternatively update the .CSV file directly if you do not have Excel available.
+
+  The script will:
+  - Run slideshow based on input from Publish-PPTX-Speech.csv
+  - Build one .wav file per slide in Record subfolder.
   
-    .LINK
-    https://github.com/dotBATmanNO/PSPublish-PPTX-Speech/
+  If you are running with the default -SaveFile 1
+  - Create and set timing to Advance Slide
+  - Inserts WAV files (linked) on each slide
+    (WAV files are set to autoplay and to hide during show)
+  - Save Publish-PPTX-Speech_VoiceOver.pptx 
+    (Set to run full screen and loop)
+
+  .LINK
+  https://github.com/dotBATmanNO/PSPublish-PPTX-Speech/
+
+  .EXAMPLE
+  .\Publish-PPTX-Speech.ps1 Publish-PPTX-Speech.pptx
+  
+  .EXAMPLE
+  .\Publish-PPTX-Speech.ps1 Publish-PPTX-Speech.pptx -SaveFile 0
+  e.g. to Run on Read-Only media, will not create WAV files / edit slides.
+  (better use is to generate VoiceOver PPTX and run this file)
+  
+  .EXAMPLE
+  .\Publish-PPTX-Speech.ps1 D:\Publish-PPTX-Speech.pptx -SaveVideo 1
+  Slide 1 was shown for 8 seconds.
+  Slide 2 was shown for 5.3 seconds.
+  Slide 3 was shown for 11.5 seconds.
+  Slide 4 was shown for 16 seconds.
+  Slide 5 was shown for 5 seconds.
+  Saving PPTX file with voice-over as 'D:\Publish-PPTX-Speech_VoiceOver.pptx'.
+  Save completed.
+  Media Task Status: Starting output to 'D:\Publish-PPTX-Speech.mp4'.
+  Media Task Status: Done
 #>
 
 [CmdletBinding(PositionalBinding=$false)]
@@ -22,7 +53,9 @@
     $SaveFile = $true,
     # Only one gender is supported for Slidexxx.wav files.
     # Pro-tip: Purchase a professional voice or enable Cortana for Speech-to-Text.
-    $SaveFileGender = "Female")
+    $SaveFileGender = "Female",
+    # If you want the script can directly generate .MP4 version of the file
+    $SaveVideo = $false)
 
 Function Out-Speech 
 {
@@ -56,35 +89,63 @@ Function Out-Speech
 Function fnSaveWAVFile
 {
     # Based on Out-Speech created by Guido Oliveira
+    # Changed to use SSML to get pau
    	
     [CmdletBinding()]
-	param(
-	  [String[]]$Message="Test Message.",
-	  [String]$WAVFileName)
+  	param(
+	    [String[]]$Message="Test Message.",
+	    [String]$WAVFileName)
     
     try   { Add-Type -Assembly System.Speech -ErrorAction Stop }
     catch { Write-Error -Message "Error loading the required assemblies" }
 
     $voicesave = New-Object -TypeName 'System.Speech.Synthesis.SpeechSynthesizer' -ErrorAction Stop
-    
+    $voicestart = "<?xml version=""1.0""?>
+    <speak version=""1.0"" xmlns=""http://www.w3.org/2001/10/synthesis""
+             xmlns:xsi=""http://www.w3.org/2001/XMLSchema-instance""
+             xsi:schemaLocation=""http://www.w3.org/2001/10/synthesis
+                       http://www.w3.org/TR/speech-synthesis/synthesis.xsd""
+             xml:lang=""en-US"">"
+       
     $voicesave.SelectVoiceByHints($SaveFileGender)
     $Voicesave.SetOutputToWaveFile($WAVFileOut)
-    ForEach ($strmsg in $Message) { $Voicesave.Speak($strmsg) }
+    ForEach ($strmsg in $Message)
+    {
+      $VoiceStart += "$($strmsg) "
+    }
+    
+    $VoiceSave.SpeakSsml("$($voicestart)</speak>") 
+    $Voicesave.SetOutputToNull()
     $voicesave.Dispose()
 
 } # End function fnSaveWAVFile
 
 # Start of main script. Check input first.
-If ( $Path -eq "" -or (Test-Path $Path) -eq $False ) 
+If ( $Path -eq "")
 {
-  Write-Host "The PowerPoint file '$($Path)' was not found!"
+  Write-Host "Please run Get-Help $($MyInvocation.MyCommand) for information on how to use this script."
+  Break
+}
+
+If ($False -eq (Test-Path -Path $Path)) 
+{
+  Write-Host "The script expects the name of a PowerPoint file, the file '$($Path)' was not found!"
+  Write-Host "Please run Get-Help .\$($MyInvocation.MyCommand) for information on how to use this script."
 }
 else
 {
 
-    $PPTXPath = Split-Path -parent $Path                                  # Retrieve PATH of PPTX file
-    $PPTXFileName = [System.IO.Path]::GetFileNameWithoutExtension($Path)  # Retrieve filename of PPTX file (no extension)
-    $SlideCSVFile = "$($PPTXPath)\$($PPTXFileName).CSV"                   # Build variable holding name of CSV file
+    $PPTXFileName = [System.IO.Path]::GetFileNameWithoutExtension($Path)                          # Retrieve filename of PPTX file (no extension)
+    
+    $PPTXPath = Split-Path -Parent $Path                                                          # Retrieve PATH of PPTX file
+    If ($PPTXPath -eq ".")
+    {
+      $Path = [System.IO.Path]::GetFullPath($PSCommandPath)                                       # Use full path to script
+      $PPTXPath = Split-Path -Parent $Path                
+    }
+    
+    $PPTXFileOpen = Join-Path -Path $PPTXPath -ChildPath "$($PPTXFileName).pptx"
+    $SlideCSVFile = Join-Path -Path $PPTXPath -ChildPath "$($PPTXFileName).csv"                   # Build variable holding name of CSV file
     If ( (Test-Path $SlideCSVFile) -eq $False ) 
     {
       Write-Host "The PowerPoint file needs to be supported by a CSV file named '$($SlideCSVFile)!"
@@ -92,6 +153,10 @@ else
       Write-Host ".. or copy and edit Publish-PPTX-Speech.csv if you do not have Excel."
       Break
     }
+    
+    # All prerequisites seem to be in place, generate variables for output.
+    $PPTXVoiceOverFile = Join-Path -Path $PPTXPath -ChildPath "$($PPTXFileName)_VoiceOver.pptx"   # Build variable for saving PPTX with VoiceOver
+    $SlideMP4File = Join-Path -Path $PPTXPath -ChildPath "$($PPTXFileName).mp4"                   # Build variable for saving PPTX as MP4 (Video)
     
     If ($SaveFile) # User wants to save Slidexxx.wav files
     {
@@ -103,30 +168,41 @@ else
         
     }
     
+    # https://docs.microsoft.com/en-us/previous-versions/office/developer/office-2003/aa211582(v=office.11)
+    # https://docs.microsoft.com/en-us/office/vba/api/powerpoint(enumerations)
     $ppAdvanceOnClick = 0
+    #$ppAdvanceOnTime = 2
     $ppSlideShowRehearseNewTimings = 3
+    $ppSlideShowUseSlideTimings = 2
     $ppSlideShowPointerAlwaysHidden = 3
-
-    # $ppShowTypeKiosk = 3
-    # $ppSlideShowDone = 5
-
+    $ppShowTypeKiosk = 3
+    #$ppSaveAsOpenXMLPresentation = 24
+    #$ppSaveAsDefault = 11
+    #$ppSaveAsMP4 = 39
+    #$ppSlideShowDone = 5
+    
+    Add-type -AssemblyName office
+    Add-Type -AssemblyName microsoft.office.interop.powerpoint
+    $msoTrue  = [Microsoft.Office.Core.MsoTriState]::msoTrue
+    $msoFalse = [Microsoft.Office.Core.MsoTriState]::msoFalse
     $objPPT = New-Object -ComObject "PowerPoint.Application"
-    $objPPT.Visible = 1
+    $objPPT.Visible = $msoTrue
+    $pptFixedFormat = [Microsoft.Office.Interop.PowerPoint.PpSaveAsFileType]::ppSaveAsOpenXMLPresentation 
+    #$msoMedia = 16
 
     Try
     {
-        # Using SaveFile parameter to decide if new Slide Advance timings shall be saved.
-        $objPresentation = $objPPT.Presentations.Open($Path, !$SaveFile,$false,$false)
+      $objPresentation = $objPPT.Presentations.Open($PPTXFileOpen, $msoFalse, $msoTrue, $msoTrue)
     }
     Catch 
     {
-        write-host "File '$($path)' failed to open in PowerPoint."
-        Break   
+      write-host "File '$($PPTXFileOpen)' failed to open in PowerPoint."
+      Break   
     }
 
     # Disable automatic transition, we want to use transitions from PPTXFileName.csv
-    $objPresentation.SlideShowSettings.AdvanceMode = $ppAdvanceOnClick
-
+    #$objPresentation.Slides.Range.SlideShowTransition.AdvanceOnTime = $false
+    
     # $objPresentation.SlideShowSettings.ShowType = $ppShowTypeKiosk
     $objPresentation.SlideShowSettings.ShowType = $ppSlideShowRehearseNewTimings
 
@@ -134,12 +210,19 @@ else
 
     $objPresentation.SlideShowSettings.EndingSlide = $objPresentation.Slides.Count
 
+    # Ensure the script can control slideshow progress with "clicks"
+    $objPresentation.SlideShowSettings.AdvanceMode = $ppAdvanceOnClick
+    For ($CurSlide=1; $CurSlide -le $objPresentation.Slides.Count; $CurSlide++)
+    {
+       # Run through all slides and set the Advance Mode to wait for Click.
+       $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceOnClick = $msoTrue
+    }
+
     $objSlideShow = $objPresentation.SlideShowSettings.Run().View
     Start-Sleep -Seconds 2
 
     $objSlideShow.PointerType = $ppSlideShowPointerAlwaysHidden
 
-    #TryCSVBlock
     Try 
     {
         $arrSteps = Import-Csv -Path $SlideCSVfile -header "SlideNumber", "Duration", "Click", "Gender", "Say"
@@ -148,7 +231,7 @@ else
     {
         Write-Host "Unable to read slide transitions from CSV file '$($SlideCSVFile)'."
         Break   
-    } # End TryCSVBlock
+    } 
 
     # Enumerate and run through all slides
     For ($CurSlide=1; $CurSlide -le $objPresentation.Slides.Count; $CurSlide++)
@@ -172,9 +255,10 @@ else
                 $strMessage = $Transition.Say
                 $strGender = $Transition.Gender
                 Write-Verbose "$strMessage by $strGender"
+                
                 # Build a variable holding all text-to-speech for this slide
                 # This can be used to create one .wav file per slide
-                $strSlideMessage += $strMessage
+                $strSlideMessage += " $($strMessage) <break time=""1s""/>"
 
                 $speaktime = Measure-Command { Out-Speech -Message $strMessage -Gender $strGender }
                 Write-Verbose $speaktime
@@ -199,8 +283,24 @@ else
 
             If ($SaveFile) # User wants to save Slidexxx.wav files
             {
+                
+                # Create WAV file
                 $WAVFileOut = Join-Path -Path $RecordPath -ChildPath "Slide$($strCurSlide).wav"
                 fnSaveWAVFile $strSlideMessage -WAVFileName $WAVFileOut
+                
+                # Add WAV file to current slide
+                Try
+                { 
+                  $oWAVFile = $objPresentation.Slides($CurSlide).Shapes.AddMediaObject2($WAVFileOut, $msoFalse, $msoTrue, 10, 10)
+                }
+                Catch { Write-Host "An error occurred, did you close PowerPoint - or did it crash?"; Write-Host "Please Retry!"; Break }
+            
+                $oWAVFile.AnimationSettings.PlaySettings.PlayOnEntry = $msoTrue
+                $oWAVFile.AnimationSettings.PlaySettings.HideWhileNotPlaying = $msoTrue
+                #$oWAVFile.AnimationSettings.AdvanceMode = $ppAdvanceOnTime
+                $oWAVFile.AnimationSettings.AnimationOrder = 1
+                
+                Clear-Variable oWAVFile
             }
          
         }
@@ -208,16 +308,22 @@ else
         {
             # Nothing to say, let's just show the slide for 5 seconds
             $objSlideShow.PointerType = $ppSlideShowPointerAlwaysHidden
-            $intSlideDuration = 5.0
-            Start-Sleep -Seconds $intSlideDuration
+            
+            $intSlideDuration = Measure-Command { Start-Sleep -Seconds 5 }
+            $intSlideDuration = [math]::Round($intSlideDuration)
+
         }
         
-        # Added errorhandling to first object access - in testing some instances have crashed.
-        # Add auto-restart to your own error handling.
-
         If ($SaveFile) 
         {
-          Try   { $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceTime = $intSlideDuration }
+          Try
+          { 
+             # Set slide to proceed to next slide automatically after timing established on playback.
+             # Round and add 1 to be sure..
+             $intSlideDuration = [math]::Round($intSlideDuration+1)
+             write-host $intSlideDuration
+             $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceTime = $intSlideDuration
+          }
           Catch { Write-Host "An error occurred, did you close PowerPoint - or did it crash?"; Write-Host "Please Retry!"; Break }
         }
          
@@ -227,15 +333,59 @@ else
         }
         Write-Host "Slide $CurSlide was shown for $intSlideDuration seconds."
         
-    } # Reached the end of slide-show
+    } # Repeat until the end of slide-show
+    
+    $objPresentation.SlideShowWindow.View.Exit() 
+    $objSlideShow = $null
 
     If ($SaveFile) 
     {
+      For ($CurSlide=1; $CurSlide -le $objPresentation.Slides.Count; $CurSlide++)
+      {
+         # Run through all slides and set the Advance Mode to use timings from this run-through.
+         $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceOnClick = $msoFalse
+         $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceOnTime = $msoTrue
+      }
+
+      # Set the slideshow to use timings, run full screen (Kiosk) and loop.
+      $objPresentation.SlideShowSettings.AdvanceMode = $ppSlideShowUseSlideTimings
+      $objPresentation.SlideShowSettings.ShowType = $ppShowTypeKiosk
+      $objPresentation.SlideShowSettings.LoopUntilStopped = $msoTrue
+      
       Try
       {
-         $objPresentation.Save() 
+         
+         If ($SaveFile)
+         {
+           Write-Host "Saving PPTX file with voice-over as '$($PPTXVoiceOverFile)'."
+           $objPresentation.SaveCopyAs($PPTXVoiceOverFile, $pptFixedFormat)
+           Start-Sleep -Seconds 3
+           Write-Host "Save completed."
+         }
+
+         If ($SaveVideo)
+         {
+           Write-Host "Media Task Status: Starting output to '$($SlideMP4File)'."
+           $objPresentation.CreateVideo($SlideMP4File, $True, 5, 1920, 15, 70)
+           While ( $objPresentation.CreateVideoStatus -le 2 )
+           {
+              Start-Sleep -Seconds 3
+           }
+         
+           Switch ($objPresentation.CreateVideoStatus)
+           {
+             3 { Write-Host "Media Task Status: Done"; Break   }
+             4 { Write-Host "Media Task Status: Failed"; Break }
+           }
+         }
+         
          $objPresentation.Close()
+         #Start-Sleep -Seconds 2
+         $objPPT.displayalerts = [Microsoft.Office.Interop.PowerPoint.PpAlertLevel]::ppAlertsNone
          $objPPT.Quit()
+         $objPPT = $null
+         [gc]::collect()
+         [gc]::WaitForPendingFinalizers()
       }
       Catch 
       {
