@@ -13,10 +13,12 @@
   
   If you are running with the default -SaveFile 1
   - Create and set timing to Advance Slide
-  - Inserts WAV files (linked) on each slide
+  - Insert WAV files (linked) on each slide
     (WAV files are set to autoplay and to hide during show)
   - Save Publish-PPTX-Speech_VoiceOver.pptx 
-    (Set to run full screen and loop)
+    * Set to run using timings
+    NOTE: If applicable you can "Setup Slidesho" to Run in Kiosk mode manually.
+          (When trying to set this via script it corrupted the PPTX file.)
 
   .LINK
   https://github.com/dotBATmanNO/PSPublish-PPTX-Speech/
@@ -89,8 +91,7 @@ Function Out-Speech
 Function fnSaveWAVFile
 {
     # Based on Out-Speech created by Guido Oliveira
-    # Changed to use SSML to get pau
-   	
+    # Changed to use SSML to add pause between lines of text.   	
     [CmdletBinding()]
   	param(
 	    [String[]]$Message="Test Message.",
@@ -111,7 +112,7 @@ Function fnSaveWAVFile
     $Voicesave.SetOutputToWaveFile($WAVFileOut)
     ForEach ($strmsg in $Message)
     {
-      $VoiceStart += "$($strmsg) "
+      $VoiceStart += "$($strmsg)<break />"
     }
     
     $VoiceSave.SpeakSsml("$($voicestart)</speak>") 
@@ -127,9 +128,10 @@ If ( $Path -eq "")
   Break
 }
 
-If ($False -eq (Test-Path -Path $Path)) 
+If (($False -eq (Test-Path -Path $Path)) -or ($path.Substring($path.length -5, 5) -ne ".pptx")) 
 {
-  Write-Host "The script expects the name of a PowerPoint file, the file '$($Path)' was not found!"
+  Write-Host "The script expects the name of a PowerPoint file."
+  Write-Host "The file '$($Path)' was not found or is not a .pptx file!"
   Write-Host "Please run Get-Help .\$($MyInvocation.MyCommand) for information on how to use this script."
 }
 else
@@ -171,15 +173,9 @@ else
     # https://docs.microsoft.com/en-us/previous-versions/office/developer/office-2003/aa211582(v=office.11)
     # https://docs.microsoft.com/en-us/office/vba/api/powerpoint(enumerations)
     $ppAdvanceOnClick = 0
-    #$ppAdvanceOnTime = 2
-    $ppSlideShowRehearseNewTimings = 3
     $ppSlideShowUseSlideTimings = 2
     $ppSlideShowPointerAlwaysHidden = 3
-    $ppShowTypeKiosk = 3
-    #$ppSaveAsOpenXMLPresentation = 24
-    #$ppSaveAsDefault = 11
-    #$ppSaveAsMP4 = 39
-    #$ppSlideShowDone = 5
+    # $ppShowTypeKiosk = 3  # Not using this as it corrupts the PPTX file!
     
     Add-type -AssemblyName office
     Add-Type -AssemblyName microsoft.office.interop.powerpoint
@@ -188,8 +184,7 @@ else
     $objPPT = New-Object -ComObject "PowerPoint.Application"
     $objPPT.Visible = $msoTrue
     $pptFixedFormat = [Microsoft.Office.Interop.PowerPoint.PpSaveAsFileType]::ppSaveAsOpenXMLPresentation 
-    #$msoMedia = 16
-
+    
     Try
     {
       $objPresentation = $objPPT.Presentations.Open($PPTXFileOpen, $msoFalse, $msoTrue, $msoTrue)
@@ -200,14 +195,7 @@ else
       Break   
     }
 
-    # Disable automatic transition, we want to use transitions from PPTXFileName.csv
-    #$objPresentation.Slides.Range.SlideShowTransition.AdvanceOnTime = $false
-    
-    # $objPresentation.SlideShowSettings.ShowType = $ppShowTypeKiosk
-    $objPresentation.SlideShowSettings.ShowType = $ppSlideShowRehearseNewTimings
-
     $objPresentation.SlideShowSettings.StartingSlide = 1
-
     $objPresentation.SlideShowSettings.EndingSlide = $objPresentation.Slides.Count
 
     # Ensure the script can control slideshow progress with "clicks"
@@ -346,10 +334,12 @@ else
          $objPresentation.Slides($CurSlide).SlideShowTransition.AdvanceOnTime = $msoTrue
       }
 
-      # Set the slideshow to use timings, run full screen (Kiosk) and loop.
+      # Set the slideshow to use timings and to run in looped Kiosk mode.
       $objPresentation.SlideShowSettings.AdvanceMode = $ppSlideShowUseSlideTimings
-      $objPresentation.SlideShowSettings.ShowType = $ppShowTypeKiosk
-      $objPresentation.SlideShowSettings.LoopUntilStopped = $msoTrue
+      
+      # Bug with setting ShowType to Kiosk causes PPTX to be corrupted.
+      # $objPresentation.SlideShowSettings.ShowType=3
+      
       
       Try
       {
@@ -378,11 +368,8 @@ else
          }
          
          $objPresentation.Close()
-         Start-Sleep -Seconds 1 # Troubleshoot Corrupted file
          $objPPT.Quit()
-         Start-Sleep -Seconds 1 # Troubleshoot Corrupted file
          $objPPT = $null
-         Start-Sleep -Seconds 1 # Troubleshoot Corrupted file
          [gc]::collect()
          [gc]::WaitForPendingFinalizers()
       }
